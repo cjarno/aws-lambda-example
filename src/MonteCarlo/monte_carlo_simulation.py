@@ -1,23 +1,23 @@
-from dataclasses import dataclass
-from typing import Callable, Optional, Tuple, Dict, Any
+from pydantic import BaseModel, conint
+from typing import Callable, Optional, Tuple, Dict, Any, List
+from collections import namedtuple
 import numpy as np
 
 
-@dataclass
-class MonteCarloSettings:
+class MonteCarloSettings(BaseModel):
     """Configuration settings for a Monte Carlo simulation.
 
     Stores parameters controlling the number of iterations, dimensions, and weight
     normalization behavior for the simulation.
 
     Attributes:
-        iterations (int): Number of simulation trials to run.
-        dimensions (int): Number of assets or variables in each trial.
+        iterations (int): Number of simulation trials to run. Must be positive.
+        dimensions (int): Number of assets or variables in each trial. Must be positive.
         weight_normalisation (bool): If True, normalizes random weights to sum to 1.
     """
 
-    iterations: int
-    dimensions: int
+    iterations: conint(gt=0)
+    dimensions: conint(gt=0)
     weight_normalisation: bool = False
 
     @property
@@ -30,6 +30,28 @@ class MonteCarloSettings:
         """
         return self.iterations, self.dimensions
 
+    def __str__(self) -> str:
+        """Stylized string representation."""
+        return f"""
+            [Monte Carlo Simulation Settings]
+            ------------------------------------------------------------
+            Simulation Configuration:
+                Iterations: {self.iterations}
+                Dimensions: {self.dimensions}
+                Weight Normalization: {'Enabled' if self.weight_normalisation else 'Disabled'}
+            
+            Random Matrix Shape:
+                Shape: {self.shape}
+            
+            ------------------------------------------------------------"""
+
+    def __repr__(self) -> str:
+        """Detailed string representation."""
+        return (
+            f"MonteCarloSettings(iterations={self.iterations}, "
+            f"dimensions={self.dimensions}, weight_normalisation={self.weight_normalisation})"
+        )
+
 
 class MonteCarloSimulation:
     """A class for running Monte Carlo simulations with random weight vectors.
@@ -41,16 +63,20 @@ class MonteCarloSimulation:
     Attributes:
         settings (MonteCarloSettings): Configuration settings for the simulation.
         simulation_func (Optional[Callable]): User-defined function to compute metrics for each trial.
-        metric_count (Optional[int]): Number of metrics returned by the method.
-        rng_cases (Optional[np.ndarray]): Matrix of random weight vectors, shape (iterations, dimensions).
-        simulation_inputs (Optional[Dict]): Keyword arguments for the method.
-        results (Optional[np.ndarray]): Array of simulation results, shape (iterations, output_size).
+        element_labels (Tuple[str] | None): Labels for the elements to allow mapping of a
+            human-readable name to the results.
+        metric_count (int | None): Number of metrics returned by the method.
+        rng_cases (np.ndarray | None): Matrix of random weight vectors, shape (iterations, dimensions).
+        simulation_inputs (Dict | None): Keyword arguments for the method.
+        results (np.ndarray | None): Array of simulation results, shape (iterations, metric_count).
     """
+
     def __init__(self, settings: MonteCarloSettings):
         self.settings = settings
 
         self.simulation_func: Optional[Callable] = None
         self.simulation_inputs = None
+        self.element_labels: Tuple[str, ...] | None = None
         self.metric_count: int | None = None
         self.random_trials = None
         self.results = None
@@ -60,26 +86,29 @@ class MonteCarloSimulation:
 
         Args:
             simulation_func (Callable): Callable that computes metrics for a random weight vector.
-                Must accept a weight vector (np.ndarray) and keyword arguments from
-                datasets, returning a NumPy array of shape (output_size,).
+                Must accept a weight vector (np.ndarray) in the first position; subsequent
+                keyword arguments can then be specified, returning a NumPy array of shape (metric_count,).
             metric_count (int): Number of metrics returned by the function.
         """
         if not metric_count > 0:
-            raise ValueError(f'metric_count ({metric_count}) must be greater than 0!')
+            raise ValueError(f"metric_count ({metric_count}) must be greater than 0!")
 
         self.simulation_func = simulation_func
         self.metric_count = metric_count
 
-    def set_simulation_inputs(self, **input_data):
+    def set_simulation_inputs(self, element_labels: Tuple[str, ...], **input_data):
         """Sets the input data for the simulation function.
 
         Configures the simulation by specifying the keyword arguments
         to be passed to the simulation function during execution.
 
         Args:
+            element_labels Tuple[str, ...]: Labels for the elements to allow mapping
+                of a human-readable name to the results.
             **input_data (Dict): Arbitrary keyword arguments to be passed to the simulation
                 function.
         """
+        self.element_labels = element_labels
         self.simulation_inputs = input_data
 
     def _generate_random_matrix(self) -> np.ndarray:
@@ -117,9 +146,13 @@ class MonteCarloSimulation:
             TypeError: If the simulation_func returns an incompatible output type or shape.
         """
         if self.simulation_func is None:
-            raise ValueError("No simulation function specified. Call set_simulation_function first.")
+            raise ValueError(
+                "No simulation function specified. Call set_simulation_function first."
+            )
         if self.simulation_inputs is None:
-            raise ValueError("No simulation inputs specified. Call set_simulation_inputs first.")
+            raise ValueError(
+                "No simulation inputs specified. Call set_simulation_inputs first."
+            )
 
         self.random_trials = self._generate_random_matrix()
 
@@ -128,10 +161,14 @@ class MonteCarloSimulation:
 
         for i in range(self.settings.iterations):
             random_vector = self.random_trials[i, :]
-            self.results[i] = self.simulation_func(random_vector, **self.simulation_inputs)
+            self.results[i] = self.simulation_func(
+                random_vector, **self.simulation_inputs
+            )
         return self.results
 
-    def get_optimal_vector(self, metric_keys: Tuple[str], max_by_metric: str) -> Dict[str, Any]:
+    def get_optimal_vector(
+        self, metric_keys: Tuple[str, ...], max_by_metric: str
+    ) -> Dict[str, Any]:
         """Returns the optimal trial based on maximizing a specified metric.
 
         Identifies the trial that maximizes the metric specified by max_by_key, returning
@@ -153,18 +190,31 @@ class MonteCarloSimulation:
                 or metric_keys length does not match results columns.
         """
         if self.results is None:
-            ValueError('First run the simulation to generate results.')
+            ValueError("First run the simulation to generate results.")
 
         if max_by_metric not in metric_keys:
-            raise ValueError(f"max_by '{max_by_metric}' must be in metric_keys: {metric_keys}")
+            raise ValueError(
+                f"max_by '{max_by_metric}' must be in metric_keys: {metric_keys}"
+            )
 
         if len(metric_keys) != self.results.shape[1]:
-            raise ValueError(f'metric_keys length ({len(metric_keys)})'
-                             f'should match the output shape of the results ({self.results.shape[1]})')
+            raise ValueError(
+                f"metric_keys length ({len(metric_keys)})"
+                f"should match the output shape of the results ({self.results.shape[1]})"
+            )
 
         optimal_metric_idx = metric_keys.index(max_by_metric)
+
         optimal_result_idx = np.argmax(self.results[:, optimal_metric_idx])
-        optimal_result = {'case': self.random_trials[optimal_result_idx]}
+
+        optimal_result_labelled = {
+            name: value
+            for name, value in zip(
+                self.element_labels, self.random_trials[optimal_result_idx]
+            )
+        }
+
+        optimal_result = {"case": optimal_result_labelled}
         for i, _key in enumerate(metric_keys):
             optimal_result[_key] = self.results[optimal_result_idx, i]
         return optimal_result
