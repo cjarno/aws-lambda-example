@@ -4,49 +4,89 @@ import datetime as dt
 from loguru import logger
 from pathlib import Path
 from enum import Enum
-from typing import Optional, Dict
+from typing import Dict
 from dotenv import load_dotenv
 
 import pandas as pd
 import numpy as np
 
 
-def load_annualised_data():
+def load_top10_annualised_data():
+    """Loads and processes annualized financial data for portfolio optimization.
+
+    Retrieves portfolio holdings, risk-free rate (RFR), and weekly adjusted time series
+    data from Alpha Vantage APIs, processes them into log returns, and computes annualized
+    mean returns, covariance matrix, and mean RFR. Data is cached locally to avoid redundant
+    API calls within the same day.
+
+    Limited to the top 10 holdings by market capitalisation due to the Alpha Vantage APIs free tier
+    allowing up to 25 requests per day.
+
+    Returns:
+        dict: A dictionary containing:
+            * mean_returns (pd.Series): Annualized mean log returns for top 10 holdings,
+              shape (10,).
+            * covariance_matrix (pd.DataFrame): Annualized covariance matrix of log returns,
+              shape (10, 10).
+            * mean_rfr (float): Annualized mean risk-free rate.
+
+    Raises:
+        requests.exceptions.RequestException: If an API request fails.
+        KeyError: If the API response lacks expected keys or data.
+        ValueError: If data processing results in invalid or missing values.
+    """
+
     load_dotenv()
+    cwd = Path.cwd()
 
     class AlphaVantageFunctionEndpoint(Enum):
+        """Enum for Alpha Vantage API function endpoints."""
         etf_profile = 'ETF_PROFILE'
         daily_timeseries = 'TIME_SERIES_DAILY'
         weekly_adj_timeseries = 'TIME_SERIES_WEEKLY_ADJUSTED'
         treasury_yield = 'TREASURY_YIELD'
 
     class AlphaVantageOutputSize(Enum):
+        """Enum for Alpha Vantage API output size options."""
         compact = 'compact'
         full = 'full'
 
     class AlphaVantageInterval(Enum):
+        """Enum for Alpha Vantage API time intervals."""
         daily = 'daily'
 
     class AlphaVantageTreasuryMaturity(Enum):
+        """Enum for Alpha Vantage API treasury yield maturities."""
         ten_year = '10year'
 
     def generate_alphavantage_function_url(
             token: str,
             endpoint: AlphaVantageFunctionEndpoint,
             base_url: str = 'https://www.alphavantage.co',
-            symbol: Optional[str] = None,
-            interval: Optional[AlphaVantageInterval] = None,
-            maturity: Optional[AlphaVantageTreasuryMaturity] = None,
-            outputsize: Optional[AlphaVantageOutputSize] = None
+            symbol: str | None = None,
+            interval: AlphaVantageInterval | None = None,
+            maturity: AlphaVantageTreasuryMaturity | None = None,
+            output_size: AlphaVantageOutputSize | None = None
     ) -> str:
-        """
-        Generates the full url for an AlphaVantage endpoint.
+        """Generates a URL for an Alpha Vantage API endpoint.
 
-        Follows the generic form of AlphaVantage API structures,
-        where a target 'function' and 'symbol' are required.
+        Constructs a URL based on the specified endpoint and optional parameters,
+        following the Alpha Vantage API structure. The API token is appended to the URL.
 
-        More complex forms are required for other endpoints.
+        Args:
+            token (str): API token for Alpha Vantage authentication.
+            endpoint (AlphaVantageFunctionEndpoint): The API function endpoint (e.g., ETF_PROFILE, TIME_SERIES_DAILY).
+            base_url (str): Base URL for the Alpha Vantage API (default: 'https://www.alphavantage.co').
+            symbol (str | None): Ticker symbol for the security (e.g., 'SPY'), if applicable.
+            interval (AlphaVantageInterval | None): Time interval for the data (e.g., daily), if applicable.
+            maturity (AlphaVantageTreasuryMaturity | None): Treasury yield maturity (e.g., 10year), if applicable.
+            output_size (AlphaVantageOutputSize | None): Size of the output data (e.g., compact, full), if applicable.
 
+        Returns:
+            str: The complete URL for the API request.
+
+        Raises:
+            ValueError: If required parameters for the endpoint are missing or invalid.
         """
         url_ex_key = fr'{base_url}/query?function={endpoint.value}'
         if symbol:
@@ -55,13 +95,12 @@ def load_annualised_data():
             url_ex_key += fr'&interval={interval.value}'
         if maturity:
             url_ex_key += fr'&maturity={maturity.value}'
-        if outputsize:
-            url_ex_key += fr'&outputsize={outputsize.value}'
+        if output_size:
+            url_ex_key += fr'&outputsize={output_size.value}'
         logger.trace(url_ex_key)
         return fr'{url_ex_key}&apikey={token}'
 
-
-    portfolio_url = generate_alphavantage_function_url(
+    etf_composition_url = generate_alphavantage_function_url(
         token=os.getenv('ALPHA_VANTAGE_TOKEN'),
         endpoint=AlphaVantageFunctionEndpoint.etf_profile,
         symbol='SPY',
@@ -75,9 +114,26 @@ def load_annualised_data():
     )
 
     def load_latest_weekly_timeseries(sym_url_dict: Dict[str, str]) -> pd.DataFrame:
+        """Loads weekly adjusted time series data for specified symbols.
+
+        Retrieves weekly adjusted closing prices from Alpha Vantage for the given symbols,
+        caching the data locally to avoid redundant API calls within the same day. The data
+        is returned as a DataFrame with dates as the index and symbols as columns.
+
+        Args:
+            sym_url_dict (Dict[str, str]): Dictionary mapping ticker symbols to their corresponding Alpha
+              Vantage API URLs.
+
+        Returns:
+            pd.DataFrame: DataFrame with weekly adjusted closing prices,
+                indexed by date and columns as symbol tickers.
+
+        Raises:
+            requests.exceptions.RequestException: If an API request fails.
+            KeyError: If the API response lacks expected keys (e.g., 'Weekly Adjusted Time Series').
+            ValueError: If the response data cannot be processed into a valid DataFrame.
         """
-        """
-        cwd = Path.cwd()
+        
         cache_filepath = cwd.joinpath(f'_{dt.datetime.now().strftime("%Y%m%d")}_timeseries_cache.parquet')
 
         if not cache_filepath.exists():
@@ -108,9 +164,24 @@ def load_annualised_data():
         return final_df
 
     def load_latest_portfolio(portfolio_url: str) -> pd.DataFrame:
+        """Loads portfolio holdings data for a specified ETF.
+
+        Retrieves the holdings data for an ETF (e.g., SPY) from Alpha Vantage, caching
+        it locally to avoid redundant API calls within the same day. The data is sorted
+        by weight in descending order.
+
+        Args:
+            portfolio_url (str): URL for the Alpha Vantage ETF_PROFILE endpoint.
+
+        Returns:
+            df (pd.DataFrame): DataFrame containing portfolio holdings, with columns including
+              'symbol' and 'weight', sorted by weight in descending order.
+
+        Raises:
+            requests.exceptions.RequestException: If the API request fails.
+            KeyError: If the API response lacks the 'holdings' key.
+            ValueError: If the response data cannot be processed into a valid DataFrame.
         """
-        """
-        cwd = Path.cwd()
         cache_filepath = cwd.joinpath(f'_{dt.datetime.now().strftime("%Y%m%d")}_holdings_cache.parquet')
 
         if not cache_filepath.exists():
@@ -126,8 +197,25 @@ def load_annualised_data():
             df = pd.read_parquet(cache_filepath)
         return df
 
-    def load_latest_rfr_timeseries(url) -> pd.DataFrame:
-        cwd = Path.cwd()
+    def load_latest_rfr_timeseries(url: str) -> pd.DataFrame:
+        """Loads daily risk-free rate (RFR) time series data.
+
+        Retrieves 10-year treasury yield data from Alpha Vantage, caching it locally to
+        avoid redundant API calls within the same day. The data is processed to convert
+        yields to decimal form, interpolate missing values, and set a datetime index.
+
+        Args:
+            url (str): URL for the Alpha Vantage TREASURY_YIELD endpoint.
+
+        Returns:
+            df (pd.DataFrame): DataFrame with a single 'rfr' column (risk-free rate in decimal
+              form), indexed by date (pd.DatetimeIndex).
+
+        Raises:
+            requests.exceptions.RequestException: If the API request fails.
+            KeyError: If the API response lacks the 'data' key.
+            ValueError: If the response data cannot be processed or contains invalid values.
+        """
         cache_filepath = cwd.joinpath(f'_{dt.datetime.now().strftime("%Y%m%d")}_rfr_cache.parquet')
         if not cache_filepath.exists():
             logger.info(f'cache unavailable, downloading and processing data to cache {cache_filepath}')
@@ -148,7 +236,7 @@ def load_annualised_data():
         return df
 
     df_portfolio = load_latest_portfolio(
-        portfolio_url=portfolio_url,
+        portfolio_url=etf_composition_url,
     )
 
     df_rfr = load_latest_rfr_timeseries(
@@ -162,7 +250,6 @@ def load_annualised_data():
             token=os.getenv('ALPHA_VANTAGE_TOKEN'),
             symbol=sym,
             endpoint=AlphaVantageFunctionEndpoint.weekly_adj_timeseries,
-            # outputsize=AlphaVantageOutputSize.compact,
         )
         for sym
         in df_portfolio_top10['symbol'].values
