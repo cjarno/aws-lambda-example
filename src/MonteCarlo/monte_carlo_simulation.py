@@ -1,6 +1,5 @@
 from pydantic import BaseModel, conint
-from typing import Callable, Optional, Tuple, Dict, Any, List
-from collections import namedtuple
+from typing import Callable, Optional, Tuple, Dict, Any
 import numpy as np
 
 
