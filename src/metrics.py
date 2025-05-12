@@ -31,7 +31,9 @@ def calculate_portfolio_metrics(
         raise ValueError("random_vector and mean_returns have different lengths.")
 
     if covariance_matrix.shape != (n_assets, n_assets):
-        raise ValueError("covariance_matrix is not square or mismatches mean_returns length.")
+        raise ValueError(
+            "covariance_matrix is not square or mismatches mean_returns length."
+        )
 
     portfolio_return = np.dot(random_vector, mean_returns)
     portfolio_volatility = np.sqrt(random_vector.T @ covariance_matrix @ random_vector)
