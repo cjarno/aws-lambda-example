@@ -32,7 +32,7 @@ Free tokens can be generated via the [Alpha Vantages site](https://www.alphavant
 
 
 ### Version
-![Version1](https://img.shields.io/badge/Version-1.0.0-informational?style=flat-square)
+![Version1](https://img.shields.io/badge/Version-1.0.1-informational?style=flat-square)
 
 
 ### Author
