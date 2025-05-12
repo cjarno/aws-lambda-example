@@ -5,7 +5,6 @@ from loguru import logger
 from pathlib import Path
 from enum import Enum
 from typing import Dict
-from dotenv import load_dotenv
 
 import pandas as pd
 import numpy as np
@@ -40,7 +39,6 @@ def load_top10_annualised_data(cache_subdir: str = '.cache'):
         ValueError: If data processing results in invalid or missing values.
     """
 
-    load_dotenv()
     cache_dir_path = Path.cwd().joinpath(cache_subdir)
     cache_dir_path.mkdir(exist_ok=True)
 

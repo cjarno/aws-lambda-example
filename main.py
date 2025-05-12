@@ -1,4 +1,5 @@
 from loguru import logger
+from dotenv import load_dotenv
 
 from src.AlphaVantage import load_top10_annualised_data
 from src.MonteCarlo import MonteCarloSimulation, MonteCarloSettings
@@ -7,6 +8,7 @@ from src.utility import log_optimal_portfolio
 
 
 if __name__ == '__main__':
+    load_dotenv()
     annualised_top10_data = load_top10_annualised_data()
 
     mcs_settings = MonteCarloSettings(
