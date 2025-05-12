@@ -63,7 +63,7 @@ def mock_data():
         "mean_returns": mean_returns,
         "covariance_matrix": covariance_matrix,
         "mean_rfr": mean_rfr,
-        "element_labels": labels
+        "element_labels": labels,
     }
 
 

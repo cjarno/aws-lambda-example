@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 
 
-def load_top10_annualised_data(cache_subdir: str = '.cache'):
+def load_top10_annualised_data(cache_subdir: str = ".cache"):
     """Loads and processes annualized financial data for portfolio optimization.
 
     Retrieves portfolio holdings, risk-free rate (RFR), and weekly adjusted time series

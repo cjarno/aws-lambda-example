@@ -7,7 +7,7 @@ from src.metrics import calculate_portfolio_metrics
 from src.utility import log_optimal_portfolio
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     load_dotenv()
     annualised_top10_data = load_top10_annualised_data()
 
