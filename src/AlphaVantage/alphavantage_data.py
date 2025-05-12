@@ -11,16 +11,20 @@ import pandas as pd
 import numpy as np
 
 
-def load_top10_annualised_data():
+def load_top10_annualised_data(cache_subdir: str = '.cache'):
     """Loads and processes annualized financial data for portfolio optimization.
 
     Retrieves portfolio holdings, risk-free rate (RFR), and weekly adjusted time series
     data from Alpha Vantage APIs, processes them into log returns, and computes annualized
-    mean returns, covariance matrix, and mean RFR. Data is cached locally to avoid redundant
-    API calls within the same day.
+    mean returns, covariance matrix, and mean RFR.
+
+    Data is cached locally to avoid redundant API calls within the same day.
 
     Limited to the top 10 holdings by market capitalisation due to the Alpha Vantage APIs free tier
     allowing up to 25 requests per day.
+
+    Args:
+        cache_subdir (str): The target subdirectory of the project to store the cached parquet files.
 
     Returns:
         dict: A dictionary containing:
@@ -37,7 +41,8 @@ def load_top10_annualised_data():
     """
 
     load_dotenv()
-    cwd = Path.cwd()
+    cache_dir_path = Path.cwd().joinpath(cache_subdir)
+    cache_dir_path.mkdir(exist_ok=True)
 
     class AlphaVantageFunctionEndpoint(Enum):
         """Enum for Alpha Vantage API function endpoints."""
@@ -138,7 +143,7 @@ def load_top10_annualised_data():
             ValueError: If the response data cannot be processed into a valid DataFrame.
         """
 
-        cache_filepath = cwd.joinpath(
+        cache_filepath = cache_dir_path.joinpath(
             f'_{dt.datetime.now().strftime("%Y%m%d")}_timeseries_cache.parquet'
         )
 
@@ -192,7 +197,7 @@ def load_top10_annualised_data():
             KeyError: If the API response lacks the 'holdings' key.
             ValueError: If the response data cannot be processed into a valid DataFrame.
         """
-        cache_filepath = cwd.joinpath(
+        cache_filepath = cache_dir_path.joinpath(
             f'_{dt.datetime.now().strftime("%Y%m%d")}_holdings_cache.parquet'
         )
 
@@ -234,7 +239,7 @@ def load_top10_annualised_data():
             KeyError: If the API response lacks the 'data' key.
             ValueError: If the response data cannot be processed or contains invalid values.
         """
-        cache_filepath = cwd.joinpath(
+        cache_filepath = cache_dir_path.joinpath(
             f'_{dt.datetime.now().strftime("%Y%m%d")}_rfr_cache.parquet'
         )
         if not cache_filepath.exists():
@@ -302,7 +307,7 @@ def load_top10_annualised_data():
             f"Data was not able to be completely corrected for missing values. Currently {na_value_count} NAs exist."
         )
     else:
-        logger.success("Data retrieved and prepared..")
+        logger.success("Data retrieved and prepared.")
 
     annualised_data = dict(
         instruments=df_portfolio_top10["symbol"].values,
