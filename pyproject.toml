@@ -1,6 +1,6 @@
 [tool.poetry]
-name = "portfolio-optimisation-lambda"
-version = "0.1.0"
+name = "mpt_montecarlo_simulation"
+version = "1.0.0"
 description = ""
 authors = ["cjarno <https://github.com/cjarno>"]
 readme = "README.md"
@@ -16,6 +16,7 @@ requests = "^2.32"
 dotenv = "^0.9"
 pyarrow = "^20.0"
 scipy = "^1.15"
+dash = "^3.0.4"
 
 
 [tool.poetry.group.dev.dependencies]
