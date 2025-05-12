@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "mpt_montecarlo_simulation"
+version = "1.0.0"
+description = "Implements a modelled Monte Carlo based portfolio optimisation using AlphaVantage data."
+authors = ["cjarno <https://github.com/cjarno>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pydantic = "^2.11"
+pandas = "^2.2"
+numpy = "^2.2"
+loguru = "^0.7"
+requests = "^2.32"
+dotenv = "^0.9"
+pyarrow = "^20.0"
+scipy = "^1.15"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.5"
+black = "^25.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
